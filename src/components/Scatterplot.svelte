@@ -16,6 +16,7 @@
   export let startDate = null;  // Add these new props
   export let endDate = null;    // Add these new props
   export let uniqueValues = [];
+  export let sizeByColumn = "";
 
 
     // let annotations = [
@@ -94,6 +95,24 @@
     $: colorScale = scaleOrdinal(schemeCategory10)
       .domain(domainColumn ? uniqueValues : []);
 
+  // Size scale for sizing by numeric column
+  const MIN_RADIUS = 3;
+  const MAX_RADIUS = 40;
+  $: sizeScale = sizeByColumn && data.length
+    ? scaleLinear()
+        .domain([0, max(data, d => +d[sizeByColumn] || 0)])
+        .range([MIN_RADIUS, MAX_RADIUS])
+        .clamp(true)
+    : null;
+
+  // Helper to get radius for a data point
+  function getRadius(d) {
+    if (sizeScale && sizeByColumn && d[sizeByColumn] != null) {
+      return sizeScale(+d[sizeByColumn] || 0);
+    }
+    return radius;
+  }
+
   // Precompute date bounds (used for defaults when needed)
   $: minDate = data.length ? new Date(Math.min(...data.map(d => d.date.getTime()))) : null;
   $: maxDate = data.length ? new Date(Math.max(...data.map(d => d.date.getTime()))) : null;
@@ -130,7 +149,8 @@
       data.forEach(d => {
         // Use isActive and isHighlighted from filteredData
         ctx.beginPath();
-        ctx.arc(margin.left + xScale(d.x), margin.top + yScale(d.y), Math.max(0.5, radius / t.k), 0, Math.PI * 2);
+        const r = getRadius(d);
+        ctx.arc(margin.left + xScale(d.x), margin.top + yScale(d.y), Math.max(0.5, r / t.k), 0, Math.PI * 2);
         ctx.fillStyle = colorScale(d[domainColumn]);
         // Opacity logic:
         // - If isActive, use high opacity
@@ -257,8 +277,9 @@
         // Compute hovered point position in world space
         const baseX = margin.left + xScale(hoveredData.x);
         const baseY = margin.top + yScale(hoveredData.y);
+        const hoveredRadius = getRadius(hoveredData);
         ctx.beginPath();
-        ctx.arc(baseX, baseY, Math.max(0.5, radius / t.k), 0, Math.PI * 2);
+        ctx.arc(baseX, baseY, Math.max(0.5, hoveredRadius / t.k), 0, Math.PI * 2);
         ctx.fillStyle = colorScale(hoveredData[domainColumn]);
         ctx.globalAlpha = 1;
         ctx.fill();
@@ -309,7 +330,8 @@
         const worldY = margin.top + yScale(d.y);
         const dx = worldX - adjustedX;
         const dy = worldY - adjustedY;
-        const isInRange = Math.sqrt(dx * dx + dy * dy) < (radius + 3) / t.k;
+        const r = getRadius(d);
+        const isInRange = Math.sqrt(dx * dx + dy * dy) < (r + 3) / t.k;
 
         // Apply the same intersection logic for interactivity
         const hasSearch = !!(searchQuery && String(searchQuery).trim().length);
@@ -354,7 +376,8 @@
         const dx = worldX - adjustedX;
         const dy = worldY - adjustedY;
         // Keep hit radius in screen pixels by scaling threshold by 1/k
-        const isInRange = Math.sqrt(dx * dx + dy * dy) < (radius + 3) / t.k;
+        const r = getRadius(d);
+        const isInRange = Math.sqrt(dx * dx + dy * dy) < (r + 3) / t.k;
 
         // Apply the same intersection logic for clicks
         const hasSearch = !!(searchQuery && String(searchQuery).trim().length);
@@ -374,7 +397,7 @@
       if (!foundData) return;
 
       // Try common link fields
-      const url = foundData.url || foundData.link || foundData.href || foundData.permalink;
+      const url = foundData.tweet_url || foundData.url || foundData.link || foundData.href || foundData.permalink;
       if (url && typeof window !== 'undefined') {
         // open in new tab safely
         window.open(url, '_blank', 'noopener,noreferrer');

@@ -52,7 +52,7 @@
 
   let data = [],
     columns = [],
-    domainColumn = "org",
+    domainColumn = "timeline_account",
     uniqueValues = [];
   let selectedValues = new Set();
   let opacity = 0.02,
@@ -70,13 +70,21 @@
   let searchQuery = "";
   let showAnnotations = false;
 
+  // Boolean filters (null = no filter, true = only true, false = only false)
+  let filterIsRetweet = null;
+  let filterHasMedia = null;
+  let filterIsQuote = null;
+
+  // Size by column (retweets, impressions, likes, or none)
+  let sizeByColumn = "";
+
   // Computed min/max dates from actual data
   $: minDateFromData = allDates.length > 0 ? allDates[0] : null;
   $: maxDateFromData = allDates.length > 0 ? allDates[allDates.length - 1] : null;
 
-  // Only allow org or cluster as color-by options
+  // Only allow timeline_account or author as color-by options
   $: allowedDomainColumns = columns.filter(
-    (c) => c === "org" || c === "state",
+    (c) => c === "timeline_account" || c === "author",
   );
   $: {
     // Wait until columns are known before adjusting the selected domain
@@ -181,7 +189,8 @@
     const fullDateRange = allDates.length && startDateIndex === 0 && endDateIndex === allDates.length - 1;
     const hasSelection = selectedValues.size > 0 && selectedValues.size < uniqueValues.length;
     const hasSearch = searchQuery && searchQuery.trim().length > 0;
-    const anyFilterActive = !fullDateRange || hasSelection || hasSearch;
+    const hasBooleanFilter = filterIsRetweet !== null || filterHasMedia !== null || filterIsQuote !== null;
+    const anyFilterActive = !fullDateRange || hasSelection || hasSearch || hasBooleanFilter;
 
     filteredData = data.map((d) => {
       const inDateRange = (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate);
@@ -196,11 +205,17 @@
                      (d.text ?? "").toLowerCase().includes(searchQuery.toLowerCase());
         }
       }
+      // Boolean filter checks (AND logic)
+      const matchesIsRetweet = filterIsRetweet === null || (String(d.is_retweet).toLowerCase() === 'true') === filterIsRetweet;
+      const matchesHasMedia = filterHasMedia === null || (String(d.has_media).toLowerCase() === 'true') === filterHasMedia;
+      const matchesIsQuote = filterIsQuote === null || (String(d.is_quote).toLowerCase() === 'true') === filterIsQuote;
+      const matchesBooleanFilters = matchesIsRetweet && matchesHasMedia && matchesIsQuote;
+
       let isActive = false;
       let isHighlighted = false;
       if (anyFilterActive) {
-        isActive = inDateRange && inSelection && inSearch;
-        isHighlighted = inDateRange && inSelection && inSearch;
+        isActive = inDateRange && inSelection && inSearch && matchesBooleanFilters;
+        isHighlighted = inDateRange && inSelection && inSearch && matchesBooleanFilters;
       } else {
         isActive = false;
         isHighlighted = false;
@@ -234,6 +249,7 @@
       csvText = lines.join("\n");
     }
     const result = Papa.parse(csvText, { header: true });
+    const minAllowedDate = new Date('2024-01-01');
     data = result.data
       .filter((d) => d.x && d.y && d.date)
       .map((d, i) => ({
@@ -242,7 +258,8 @@
         y: +d.y,
         date: new Date(d.date),
         id: i,
-      }));
+      }))
+      .filter((d) => d.date >= minAllowedDate);
 
     columns = result.meta.fields || [];
     allDates = [...new Set(data.map((d) => d.date.getTime()))]
@@ -442,9 +459,9 @@
       isPlaying = false;
     }
 
-    // Reset domain to default ('org' if available, otherwise first allowed)
-    const defaultDomain = columns.includes("org")
-      ? "org"
+    // Reset domain to default ('timeline_account' if available, otherwise first allowed)
+    const defaultDomain = columns.includes("timeline_account")
+      ? "timeline_account"
       : allowedDomainColumns[0] || "";
     domainColumn = defaultDomain;
 
@@ -455,6 +472,14 @@
     // Reset search and annotations
     searchQuery = "";
     showAnnotations = false;
+
+    // Reset boolean filters
+    filterIsRetweet = null;
+    filterHasMedia = null;
+    filterIsQuote = null;
+
+    // Reset size by
+    sizeByColumn = "";
 
     // Reset opacity to initial default
     opacity = 0.02;
@@ -481,8 +506,8 @@
   <div class="title-section">
     <h1 class="title">Semantic Map [DEMO]</h1>
     <p class="subtitle">
-      Each dot represents an article. When the dots are closer together, the
-      articles are similar in meaning.
+      Each dot represents an tweet. When the dots are closer together, the
+      tweets are similar in meaning.
     </p>
   </div>
 
@@ -500,7 +525,7 @@
             <p>
               Semantic maps are tools that allow users to visually explore how
               different topics and ideas are connected. By analyzing the
-              relationships between articles, these maps can reveal patterns and
+              relationships between tweets, these maps can reveal patterns and
               clusters in the data.
             </p>
             <p>Newsrooms can use semantic maps to:</p>
@@ -580,12 +605,47 @@
         on:input={handleOpacityChange}
       />
 
+      <label for="size-by">Size by:</label>
+      <select id="size-by" bind:value={sizeByColumn}>
+        <option value="">None (uniform size)</option>
+        <option value="likes">Likes</option>
+        <option value="retweets">Retweets</option>
+        <option value="impressions">Impressions</option>
+      </select>
+
+      <label>Boolean Filters:</label>
+      <div class="filter-row">
+        <span>Is Retweet:</span>
+        <select bind:value={filterIsRetweet}>
+          <option value={null}>Any</option>
+          <option value={true}>Yes</option>
+          <option value={false}>No</option>
+        </select>
+      </div>
+      <div class="filter-row">
+        <span>Has Media:</span>
+        <select bind:value={filterHasMedia}>
+          <option value={null}>Any</option>
+          <option value={true}>Yes</option>
+          <option value={false}>No</option>
+        </select>
+      </div>
+      <div class="filter-row">
+        <span>Is Quote:</span>
+        <select bind:value={filterIsQuote}>
+          <option value={null}>Any</option>
+          <option value={true}>Yes</option>
+          <option value={false}>No</option>
+        </select>
+      </div>
+
       <div class="date-controls">
         <label for="start-date">📅 Date Range:</label>
         <input
           id="start-date"
           type="date"
           value={formatDateInput(startDate)}
+          min="2024-01-01"
           max={formatDateInput(maxDateFromData)}
           on:change={(e) => handleDateChange(e, "start")}
         />
@@ -593,6 +653,7 @@
           id="end-date"
           type="date"
           value={formatDateInput(endDate)}
+          min="2024-01-01"
           max={formatDateInput(maxDateFromData)}
           on:change={(e) => handleDateChange(e, "end")}
         />
@@ -640,6 +701,7 @@
           {startDate}
           {endDate}
           uniqueValues={uniqueValues}
+          {sizeByColumn}
         />
       {:else if isLoading}
         <div class="progress-wrap">
@@ -789,6 +851,24 @@
     padding: 1rem;
     /* box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05); */
     box-sizing: border-box; /* ensure padding doesn't cause vertical overflow */
+  }
+
+  .filter-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+  }
+
+  .filter-row span {
+    font-size: 0.9rem;
+  }
+
+  .filter-row select {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 0.85rem;
   }
 
   .date-controls label {

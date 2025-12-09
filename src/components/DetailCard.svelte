@@ -29,10 +29,23 @@
 
 <div class="detail-card" style="left: {posX}px; top: {posY}px;">
   {#if hoveredData}
-  <h1>{hoveredData.title}</h1>
   <span style="background: {colorScale(hoveredData[domainColumn])};">
       {labelOverride ? labelOverride(domainColumn, hoveredData[domainColumn]) : hoveredData[domainColumn]}</span>
   <h2>{hoveredData.date.toISOString().split('T')[0]}</h2>  
+
+  <!-- gets the field is_retweet -->
+   {#if hoveredData.is_retweet == "True"}
+      <p><em><strong>Retweet</strong></em></p>
+   {:else}
+      <p><em><strong>Original Tweet</strong></em></p>
+   {/if}
+
+     <!-- gets the field is_retweet -->
+   {#if hoveredData.impressions}
+      <p><em>Likes: {hoveredData.likes}</em></p>
+      <p><em>Retweets: {hoveredData.retweets}</em></p>
+      <p><em>Impressions: {hoveredData.impressions}</em></p>
+   {/if}
   {#if descriptionOverride}
     {#if descriptionOverride(domainColumn, hoveredData[domainColumn])}
       <p><em>{descriptionOverride(domainColumn, hoveredData[domainColumn])}</em></p>
@@ -94,5 +107,13 @@
       font-size: 0.85rem;
       font-weight: 400;
       margin: 0;
+    }
+
+  em {
+      font-style: italic;
+    }
+
+  strong {
+      font-weight: 700;
     }
 </style>
